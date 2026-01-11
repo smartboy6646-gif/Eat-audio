@@ -1,0 +1,216 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Call Break Online</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<div id="app">
+  <h2 id="roomStatus">Connecting...</h2>
+
+  <div id="players"></div>
+
+  <div id="bidding" class="hidden">
+    <h3>Place Your Bid</h3>
+    <select id="bidValue">
+      <option>1</option><option>2</option><option>3</option>
+      <option>4</option><option>5</option><option>6</option>
+      <option>7</option><option>8</option>
+    </select>
+    <button onclick="submitBid()">Submit</button>
+  </div>
+
+  <div id="table"></div>
+
+  <div id="hand"></div>
+</div>
+
+<audio id="cardSound" src="card.mp3"></audio>
+
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+<script src="firebase.js"></script>
+<script src="game.js"></script>
+
+</body>
+</html>
+
+body {
+  margin: 0;
+  background: #0b3d2e;
+  color: white;
+  font-family: Arial, sans-serif;
+  text-align: center;
+}
+
+#app {
+  padding: 10px;
+}
+
+#players {
+  display: flex;
+  justify-content: space-around;
+  margin-bottom: 10px;
+}
+
+.player {
+  font-size: 12px;
+}
+
+#table {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  min-height: 120px;
+  margin: 10px 0;
+}
+
+.card {
+  width: 60px;
+  height: 90px;
+  background: white;
+  color: black;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: bold;
+}
+
+#hand {
+  display: flex;
+  overflow-x: auto;
+  gap: 6px;
+  justify-content: center;
+}
+
+.card.playable {
+  border: 3px solid gold;
+}
+
+.hidden {
+  display: none;
+}
+
+button {
+  padding: 6px 12px;
+  margin-top: 5px;
+}
+
+const firebaseConfig = {
+  apiKey: "AIzaSyDKKAxKTFJcMDmj6j21nKHwlSpwAxsw57k",
+  authDomain: "call-breke.firebaseapp.com",
+  databaseURL: "https://call-breke-default-rtdb.firebaseio.com",
+  projectId: "call-breke",
+  storageBucket: "call-breke.firebasestorage.app",
+  messagingSenderId: "908751603046",
+  appId: "1:908751603046:web:fd30e07b9e6400b35c74a7",
+  measurementId: "G-V2D55S47QV"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+const analytics = getAnalytics(app);
+
+const suits = ["♠","♥","♦","♣"];
+const values = ["2","3","4","5","6","7","8","9","10","J","Q","K","A"];
+
+const roomId = "room1";
+const playerId = "P" + Math.floor(Math.random()*10000);
+
+let gameRef = db.ref("rooms/" + roomId);
+
+gameRef.once("value", snap => {
+  if (!snap.exists()) {
+    gameRef.set({
+      players: {},
+      turn: null,
+      phase: "waiting",
+      table: []
+    });
+  }
+  joinGame();
+});
+
+function joinGame() {
+  const pRef = gameRef.child("players/" + playerId);
+  pRef.set({
+    bid: null,
+    hand: [],
+    tricks: 0
+  });
+
+  gameRef.child("players").on("value", snap => {
+    document.getElementById("players").innerHTML = "";
+    snap.forEach(p => {
+      let d = document.createElement("div");
+      d.className = "player";
+      d.textContent = p.key;
+      document.getElementById("players").appendChild(d);
+    });
+
+    if (snap.numChildren() === 4) startGame();
+  });
+}
+
+function startGame() {
+  gameRef.child("phase").set("bidding");
+  dealCards();
+  document.getElementById("bidding").classList.remove("hidden");
+}
+
+function dealCards() {
+  let deck = [];
+  suits.forEach(s => values.forEach(v => deck.push(v+s)));
+  deck.sort(() => Math.random() - 0.5);
+
+  gameRef.child("players").once("value", snap => {
+    let i = 0;
+    snap.forEach(p => {
+      gameRef.child("players/"+p.key+"/hand").set(deck.slice(i,i+13));
+      i += 13;
+    });
+  });
+}
+
+function submitBid() {
+  let bid = document.getElementById("bidValue").value;
+  gameRef.child("players/"+playerId+"/bid").set(parseInt(bid));
+  document.getElementById("bidding").classList.add("hidden");
+}
+
+gameRef.child("players/"+playerId+"/hand").on("value", snap => {
+  let handDiv = document.getElementById("hand");
+  handDiv.innerHTML = "";
+  snap.forEach(card => {
+    let c = document.createElement("div");
+    c.className = "card playable";
+    c.textContent = card.val();
+    c.onclick = () => playCard(card.val());
+    handDiv.appendChild(c);
+  });
+});
+
+function playCard(card) {
+  document.getElementById("cardSound").play();
+  gameRef.child("table").push({player: playerId, card});
+  gameRef.child("players/"+playerId+"/hand").once("value", snap => {
+    let newHand = snap.val().filter(c => c !== card);
+    gameRef.child("players/"+playerId+"/hand").set(newHand);
+  });
+}
+
+gameRef.child("table").on("value", snap => {
+  let table = document.getElementById("table");
+  table.innerHTML = "";
+  snap.forEach(p => {
+    let c = document.createElement("div");
+    c.className = "card";
+    c.textContent = p.val().card;
+    table.appendChild(c);
+  });
+});
