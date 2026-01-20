@@ -21,6 +21,9 @@
         .candy:active { transform: translateY(4px); box-shadow: 0 0 0 #ddd; }
         .red-hit { background: #ff4d4d !important; border: none; transform: scale(0.9); box-shadow: none; }
         .gold-hit { background: var(--coin) !important; border: 2px solid orange; animation: shine 0.5s; }
+        /* NEW FEATURE: Flash effect for selection */
+        .temp-select { background: var(--acc) !important; color: white !important; transform: scale(0.95); transition: 0.2s; }
+        
         .removed { visibility: hidden; pointer-events: none; }
         .hidden { display: none !important; }
         
@@ -240,6 +243,13 @@
         
         // 1. Poison Selection Phase
         if(gameData.state === "selecting" && gameData[myRole+"_p"] === undefined) {
+            
+            // --- NEW FEATURE START: Highlight for 500ms ---
+            const el = document.getElementById("c-" + i);
+            el.classList.add('temp-select');
+            setTimeout(() => { if(el) el.classList.remove('temp-select'); }, 500);
+            // --- NEW FEATURE END ---
+
             update(rRef, {[myRole+"_p"]: i}).then(() => {
                 get(rRef).then(snap => {
                     let d = snap.val(), ready = 0;
@@ -273,13 +283,9 @@
                     [`rem_${i}`]: 'gold', 
                     [`p${myRole.replace("p","")}_score`]: (gameData[`p${myRole.replace("p","")}_score`]||0) + 2
                 });
-                // If it is ALSO poison, the poison logic below will trigger in the user's mind, 
-                // but in this game flow, hitting gold usually shouldn't kill you immediately or it's too harsh.
-                // Let's make it: Gold saves you from poison? Or Gold is just bonus.
-                // Logic: If Gold AND Poison -> You get points, but round ends (Winner is prev player).
+                
                 if(!isP) return; // If just gold, continue (don't change turn? Or change turn? Let's keep turn for simplicity or change. Let's not change turn as reward).
-                // Actually, simplest: Finding Gold = Turn passes, +2 points.
-                // Wait, if I return here, the function stops. So player keeps turn? No, let's pass turn.
+                
             }
 
             if(isP) {
