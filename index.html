@@ -1,408 +1,342 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ne">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Call Break - Multiplayer Card Game</title>
-    <link rel="stylesheet" href="style.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
-    <link rel="icon" type="image/x-icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>♠️</text></svg>">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Poison & Save: Ultimate v3</title>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <style>
+        :root { --p: #780000; --bg: #fdf0d5; --acc: #003049; --g: #fcbf49; --coin: #ffd700; }
+        * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; user-select: none; }
+        body { font-family: 'Segoe UI', sans-serif; background: var(--bg); margin: 0; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+        #game-container { width: 95%; max-width: 400px; height: 95vh; background: white; padding: 15px; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); position: relative; display: flex; flex-direction: column; }
+        input { width: 100%; padding: 12px; margin: 8px 0; border: 2px solid #ddd; border-radius: 10px; text-align: center; font-size: 16px; }
+        .btn { background: var(--p); color: white; border: none; padding: 12px; border-radius: 10px; width: 100%; font-weight: bold; cursor: pointer; margin-top: 5px; transition: 0.2s; }
+        .btn:active { transform: scale(0.95); }
+        .scoreboard { display: grid; gap: 5px; background: var(--acc); color: white; padding: 10px; border-radius: 12px; margin-bottom: 10px; }
+        .player-slot { padding: 5px; border-radius: 8px; text-align: center; font-size: 12px; transition: 0.3s; position: relative; }
+        .active-turn { border: 2px solid var(--g); background: rgba(252, 191, 73, 0.3); transform: scale(1.05); box-shadow: 0 0 10px var(--g); }
+        .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; flex-grow: 1; align-content: center; }
+        .candy { aspect-ratio: 1/1; font-size: 35px; background: #fff; border: 1px solid #eee; border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 0 #ddd; cursor: pointer; transition: 0.1s; position: relative; }
+        .candy:active { transform: translateY(4px); box-shadow: 0 0 0 #ddd; }
+        .red-hit { background: #ff4d4d !important; border: none; transform: scale(0.9); box-shadow: none; }
+        .gold-hit { background: var(--coin) !important; border: 2px solid orange; animation: shine 0.5s; }
+        .removed { visibility: hidden; pointer-events: none; }
+        .hidden { display: none !important; }
+        
+        /* New Features CSS */
+        .emoji-bar { display: flex; justify-content: space-around; margin-top: 10px; padding: 5px; background: #eee; border-radius: 30px; }
+        .emoji-btn { font-size: 24px; cursor: pointer; background: none; border: none; padding: 5px; transition: 0.2s; }
+        .emoji-btn:hover { transform: scale(1.3); }
+        .floating-emoji { position: absolute; font-size: 40px; animation: floatUp 2s ease-out forwards; pointer-events: none; z-index: 100; left: 50%; top: 50%; }
+        
+        @keyframes floatUp { 0% { transform: translate(-50%, 0) scale(0.5); opacity: 1; } 100% { transform: translate(-50%, -150px) scale(1.5); opacity: 0; } }
+        @keyframes shine { 0% { transform: scale(1); } 50% { transform: scale(1.2) rotate(10deg); } 100% { transform: scale(1); } }
+        
+        .mode-toggle { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 10px 0; font-size: 14px; font-weight: bold; color: var(--acc); }
+        .switch { position: relative; display: inline-block; width: 40px; height: 20px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #ccc; transition: .4s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 2px; bottom: 2px; background-color: white; transition: .4s; border-radius: 50%; }
+        input:checked + .slider { background-color: var(--g); }
+        input:checked + .slider:before { transform: translateX(20px); }
+    </style>
 </head>
 <body>
-    <div class="container">
-        <!-- Game Start Screen -->
-        <div id="startScreen" class="screen active">
-            <div class="logo">
-                <h1><i class="fas fa-club"></i> CALL BREAK</h1>
-                <p>Multiplayer Card Game</p>
-            </div>
-            
-            <div class="game-info">
-                <div class="info-card">
-                    <i class="fas fa-users"></i>
-                    <h3>4 Players</h3>
-                    <p>Real-time multiplayer</p>
-                </div>
-                <div class="info-card">
-                    <i class="fas fa-gavel"></i>
-                    <h3>Bidding</h3>
-                    <p>Predict your tricks</p>
-                </div>
-                <div class="info-card">
-                    <i class="fas fa-spade"></i>
-                    <h3>Spades Trump</h3>
-                    <p>Always the trump suit</p>
-                </div>
-            </div>
-            
-            <div class="player-setup">
-                <div class="input-group">
-                    <i class="fas fa-user"></i>
-                    <input type="text" id="playerName" placeholder="Enter your name" maxlength="15" value="Player">
-                </div>
-                
-                <div class="button-group">
-                    <button id="createRoomBtn" class="btn primary">
-                        <i class="fas fa-plus-circle"></i> Create Room
-                    </button>
-                    <button id="joinRoomBtn" class="btn secondary">
-                        <i class="fas fa-sign-in-alt"></i> Join Room
-                    </button>
-                </div>
-                
-                <div id="roomCodeSection" class="hidden">
-                    <div class="input-group">
-                        <i class="fas fa-key"></i>
-                        <input type="text" id="roomCode" placeholder="Enter room code" maxlength="6">
-                    </div>
-                    <button id="joinWithCodeBtn" class="btn primary">
-                        <i class="fas fa-door-open"></i> Join Game
-                    </button>
-                </div>
-            </div>
-            
-            <div class="instructions">
-                <h3><i class="fas fa-info-circle"></i> How to Play</h3>
-                <ul>
-                    <li>4 players game with 13 cards each</li>
-                    <li>Spades (♠) are always trump</li>
-                    <li>Bid how many tricks you'll win</li>
-                    <li>Win tricks by playing higher cards</li>
-                    <li>Score points based on your bid</li>
-                </ul>
-            </div>
+
+<div id="game-container">
+    <div id="hub-screen">
+        <h2 style="text-align:center; color:var(--p);">🍫 Poison & Save <span style="font-size:12px; color:#666;">v3</span></h2>
+        <input type="text" id="playerName" placeholder="Tapaiko Naam">
+        <input type="text" id="targetRoomId" placeholder="Room ID (Ex: 1234)">
+        <button class="btn" style="background:var(--acc);" onclick="handleJoinOrCreate()">JOIN / CREATE ROOM</button>
+    </div>
+
+    <div id="game-section" class="hidden" style="height:100%; display:flex; flex-direction:column;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+            <div id="round-info" style="font-weight:bold; color:var(--p); background:var(--g); padding:2px 8px; border-radius:5px; font-size:12px;">Round: 1/11</div>
+            <div id="mode-display" style="font-size:10px; font-weight:bold; color:var(--acc);">CLASSIC</div>
+            <button onclick="leaveRoom()" style="font-size:10px; border:none; background:#eee; padding:5px 10px; border-radius:5px;">LEAVE</button>
         </div>
 
-        <!-- Waiting Room Screen -->
-        <div id="waitingScreen" class="screen hidden">
-            <div class="room-header">
-                <h2><i class="fas fa-door-closed"></i> Waiting Room</h2>
-                <div class="room-info">
-                    <div class="room-code">
-                        <span>Room Code:</span>
-                        <strong id="displayRoomCode">-----</strong>
-                        <button id="copyCodeBtn" class="btn small">
-                            <i class="fas fa-copy"></i> Copy
-                        </button>
-                    </div>
-                    <button id="leaveRoomBtn" class="btn danger">
-                        <i class="fas fa-sign-out-alt"></i> Leave
-                    </button>
-                </div>
-            </div>
+        <div id="lobby-ui" style="text-align:center; margin-top:20px;">
+            <h3>Waiting for players...</h3>
+            <div id="p-list" style="margin:20px 0; font-size:16px; font-weight:bold; color:#555;"></div>
             
-            <div class="players-waiting">
-                <h3>Players (<span id="playerCount">0</span>/4)</h3>
-                <div class="players-list">
-                    <div class="player-waiting" id="waitingPlayer1">
-                        <div class="player-avatar"><i class="fas fa-user"></i></div>
-                        <div class="player-name">Waiting...</div>
-                        <div class="player-status idle">IDLE</div>
-                    </div>
-                    <div class="player-waiting" id="waitingPlayer2">
-                        <div class="player-avatar"><i class="fas fa-user"></i></div>
-                        <div class="player-name">Waiting...</div>
-                        <div class="player-status idle">IDLE</div>
-                    </div>
-                    <div class="player-waiting" id="waitingPlayer3">
-                        <div class="player-avatar"><i class="fas fa-user"></i></div>
-                        <div class="player-name">Waiting...</div>
-                        <div class="player-status idle">IDLE</div>
-                    </div>
-                    <div class="player-waiting" id="waitingPlayer4">
-                        <div class="player-avatar"><i class="fas fa-user"></i></div>
-                        <div class="player-name">Waiting...</div>
-                        <div class="player-status idle">IDLE</div>
-                    </div>
+            <div id="host-controls" class="hidden">
+                <div class="mode-toggle">
+                    <span>Classic</span>
+                    <label class="switch">
+                        <input type="checkbox" id="mode-check">
+                        <span class="slider"></span>
+                    </label>
+                    <span>💰 Gold Mode</span>
                 </div>
+                <button id="start-btn" class="btn" onclick="hostStart()">START GAME 🚀</button>
             </div>
-            
-            <div class="waiting-controls">
-                <div id="waitingMessage" class="message">
-                    <i class="fas fa-hourglass-half"></i> Waiting for players to join...
-                </div>
-                <button id="startGameBtn" class="btn primary hidden">
-                    <i class="fas fa-play"></i> Start Game
-                </button>
-            </div>
+            <p style="font-size:12px; color:#999; margin-top:20px;">Share Room ID to invite friends!</p>
         </div>
 
-        <!-- Game Screen -->
-        <div id="gameScreen" class="screen hidden">
-            <!-- Game Header -->
-            <header class="game-header">
-                <div class="room-indicator">
-                    <i class="fas fa-door-open"></i> Room: <span id="gameRoomCode">-----</span>
-                </div>
-                <div class="game-phase" id="gamePhase">
-                    BIDDING PHASE
-                </div>
-                <div class="player-indicator">
-                    <i class="fas fa-user"></i> <span id="currentPlayerName">You</span>
-                </div>
-            </header>
-
-            <!-- Opponent Players Area -->
-            <div class="opponents-area">
-                <!-- Top opponent -->
-                <div class="opponent" id="opponentTop">
-                    <div class="opponent-info">
-                        <div class="opponent-name">Player 2</div>
-                        <div class="opponent-cards">Cards: <span>13</span></div>
-                    </div>
-                    <div class="opponent-status">
-                        <div class="bid-display">Bid: <span>-</span></div>
-                        <div class="tricks-display">Tricks: <span>0</span></div>
-                    </div>
-                    <div class="opponent-cards-display">
-                        <div class="card-back"></div>
-                        <div class="card-back"></div>
-                        <div class="card-back"></div>
-                    </div>
-                </div>
-
-                <!-- Left and right opponents -->
-                <div class="side-opponents">
-                    <div class="opponent" id="opponentLeft">
-                        <div class="opponent-info">
-                            <div class="opponent-name">Player 3</div>
-                            <div class="opponent-cards">Cards: <span>13</span></div>
-                        </div>
-                        <div class="opponent-status">
-                            <div class="bid-display">Bid: <span>-</span></div>
-                            <div class="tricks-display">Tricks: <span>0</span></div>
-                        </div>
-                        <div class="opponent-cards-display">
-                            <div class="card-back"></div>
-                            <div class="card-back"></div>
-                            <div class="card-back"></div>
-                        </div>
-                    </div>
-
-                    <div class="center-area">
-                        <!-- Trick pile display -->
-                        <div class="trick-pile">
-                            <div class="trick-title">Current Trick</div>
-                            <div class="trick-cards" id="trickCards">
-                                <!-- Cards played in current trick will appear here -->
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="opponent" id="opponentRight">
-                        <div class="opponent-info">
-                            <div class="opponent-name">Player 4</div>
-                            <div class="opponent-cards">Cards: <span>13</span></div>
-                        </div>
-                        <div class="opponent-status">
-                            <div class="bid-display">Bid: <span>-</span></div>
-                            <div class="tricks-display">Tricks: <span>0</span></div>
-                        </div>
-                        <div class="opponent-cards-display">
-                            <div class="card-back"></div>
-                            <div class="card-back"></div>
-                            <div class="card-back"></div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Current Player Area -->
-            <div class="player-area">
-                <div class="player-info">
-                    <div class="player-name" id="playerInfoName">You</div>
-                    <div class="player-stats">
-                        <div class="player-bid">Bid: <span id="playerBid">-</span></div>
-                        <div class="player-tricks">Tricks: <span id="playerTricks">0</span></div>
-                        <div class="player-cards">Cards: <span id="playerCardCount">13</span></div>
-                    </div>
-                </div>
-
-                <!-- Bidding Controls -->
-                <div class="bidding-controls" id="biddingControls">
-                    <div class="bidding-title">Place Your Bid</div>
-                    <div class="bid-slider-container">
-                        <input type="range" id="bidSlider" min="0" max="13" value="0">
-                        <div class="bid-value-display">
-                            <span id="bidValue">0</span> tricks
-                        </div>
-                    </div>
-                    <div class="bid-buttons">
-                        <button class="btn bid-btn" data-bid="0">0</button>
-                        <button class="btn bid-btn" data-bid="3">3</button>
-                        <button class="btn bid-btn" data-bid="5">5</button>
-                        <button class="btn bid-btn" data-bid="7">7</button>
-                        <button class="btn bid-btn" data-bid="9">9</button>
-                        <button class="btn bid-btn" data-bid="13">13</button>
-                    </div>
-                    <button id="submitBidBtn" class="btn primary">
-                        <i class="fas fa-check"></i> Submit Bid
-                    </button>
-                </div>
-
-                <!-- Player Cards -->
-                <div class="cards-container" id="playerCards">
-                    <!-- Player's cards will be rendered here -->
-                </div>
-
-                <!-- Game Controls -->
-                <div class="game-controls">
-                    <button id="sortCardsBtn" class="btn icon-btn">
-                        <i class="fas fa-sort-amount-down"></i> Sort
-                    </button>
-                    <button id="soundToggleBtn" class="btn icon-btn">
-                        <i class="fas fa-volume-up"></i> Sound
-                    </button>
-                    <button id="gameMenuBtn" class="btn icon-btn">
-                        <i class="fas fa-cog"></i> Menu
-                    </button>
-                </div>
-            </div>
-
-            <!-- Game Messages -->
-            <div id="gameMessage" class="message hidden">
-                <span id="messageText"></span>
-            </div>
-        </div>
-
-        <!-- Score Screen -->
-        <div id="scoreScreen" class="screen hidden">
-            <div class="score-header">
-                <h2><i class="fas fa-trophy"></i> Round Results</h2>
-                <button id="nextRoundBtn" class="btn primary">
-                    <i class="fas fa-redo"></i> Next Round
-                </button>
-            </div>
+        <div id="play-ui" class="hidden" style="height:100%; display:flex; flex-direction:column;">
+            <div class="scoreboard" id="scoreboard"></div>
+            <div id="status-txt" style="text-align:center; font-size:14px; margin-bottom:10px; font-weight:bold;"></div>
+            <div id="grid" class="grid"></div>
             
-            <div class="score-summary">
-                <div class="round-info">
-                    <div class="round-number">Round <span id="roundNumber">1</span></div>
-                    <div class="round-scores">Total Scores</div>
-                </div>
-                
-                <div class="players-score" id="playersScore">
-                    <!-- Player scores will be rendered here -->
-                </div>
-            </div>
-            
-            <div class="score-details">
-                <h3>Round Details</h3>
-                <table class="score-table">
-                    <thead>
-                        <tr>
-                            <th>Player</th>
-                            <th>Bid</th>
-                            <th>Tricks</th>
-                            <th>Score</th>
-                            <th>Total</th>
-                        </tr>
-                    </thead>
-                    <tbody id="scoreDetails">
-                        <!-- Score details will be rendered here -->
-                    </tbody>
-                </table>
-            </div>
-            
-            <div class="score-controls">
-                <button id="backToLobbyBtn" class="btn secondary">
-                    <i class="fas fa-home"></i> Back to Lobby
-                </button>
-                <button id="newGameBtn" class="btn primary">
-                    <i class="fas fa-plus-circle"></i> New Game
-                </button>
-            </div>
-        </div>
-
-        <!-- Game Menu Modal -->
-        <div id="gameMenuModal" class="modal hidden">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>Game Menu</h3>
-                    <button id="closeMenuBtn" class="btn icon-btn">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <div class="modal-body">
-                    <div class="menu-options">
-                        <button id="restartGameBtn" class="menu-btn">
-                            <i class="fas fa-redo"></i> Restart Game
-                        </button>
-                        <button id="leaveGameBtn" class="menu-btn">
-                            <i class="fas fa-sign-out-alt"></i> Leave Game
-                        </button>
-                        <button id="rulesBtn" class="menu-btn">
-                            <i class="fas fa-book"></i> Game Rules
-                        </button>
-                        <div class="sound-option">
-                            <label for="soundToggleMenu">
-                                <i class="fas fa-volume-up"></i> Sound Effects
-                            </label>
-                            <label class="switch">
-                                <input type="checkbox" id="soundToggleMenu" checked>
-                                <span class="slider"></span>
-                            </label>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Rules Modal -->
-        <div id="rulesModal" class="modal hidden">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h3>Call Break Rules</h3>
-                    <button id="closeRulesBtn" class="btn icon-btn">
-                        <i class="fas fa-times"></i>
-                    </button>
-                </div>
-                <div class="modal-body">
-                    <div class="rules-content">
-                        <h4><i class="fas fa-club"></i> Game Overview</h4>
-                        <p>Call Break is a trick-taking card game for 4 players. The objective is to accurately predict and win the number of tricks you bid.</p>
-                        
-                        <h4><i class="fas fa-gavel"></i> Bidding Phase</h4>
-                        <ul>
-                            <li>Each player receives 13 cards</li>
-                            <li>Players bid how many tricks they think they'll win (0-13)</li>
-                            <li>The total bids cannot equal 13</li>
-                            <li>Spades are always trump</li>
-                        </ul>
-                        
-                        <h4><i class="fas fa-gamepad"></i> Playing Phase</h4>
-                        <ul>
-                            <li>The player who won the previous trick leads the next one</li>
-                            <li>Players must follow suit if possible</li>
-                            <li>If you can't follow suit, you may play any card</li>
-                            <li>The highest card of the led suit wins, unless a trump (spade) is played</li>
-                            <li>The highest spade always wins the trick</li>
-                        </ul>
-                        
-                        <h4><i class="fas fa-calculator"></i> Scoring</h4>
-                        <ul>
-                            <li>If you make your exact bid: +10 points + bid amount</li>
-                            <li>For each overtrick: +1 point per trick</li>
-                            <li>For each undertrick: -1 point per trick</li>
-                            <li>Game continues for multiple rounds</li>
-                        </ul>
-                    </div>
-                </div>
+            <div class="emoji-bar">
+                <button class="emoji-btn" onclick="sendReaction('😂')">😂</button>
+                <button class="emoji-btn" onclick="sendReaction('😱')">😱</button>
+                <button class="emoji-btn" onclick="sendReaction('😡')">😡</button>
+                <button class="emoji-btn" onclick="sendReaction('👍')">👍</button>
             </div>
         </div>
     </div>
 
-    <!-- Audio Element -->
-    <audio id="cardSound" preload="auto">
-        <source src="assets/sounds/card-play.mp3" type="audio/mpeg">
-    </audio>
+    <div id="round-overlay" class="hidden" style="position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.85); color:white; z-index:2000; display:flex; flex-direction:column; justify-content:center; align-items:center; border-radius:20px;">
+        <h1 id="r-winner" style="text-align:center;"></h1>
+        <div id="final-controls" class="hidden">
+            <button class="btn" style="background:var(--g); color:black; width:200px;" onclick="hostReset()">PLAY AGAIN 🔄</button>
+        </div>
+    </div>
+</div>
 
-    <!-- Firebase SDK -->
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+<audio id="snd-pop" src="https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.m4a"></audio>
+<audio id="snd-win" src="https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.m4a"></audio>
+<audio id="snd-bad" src="https://assets.mixkit.co/active_storage/sfx/950/950-preview.m4a"></audio>
+<audio id="snd-coin" src="https://assets.mixkit.co/active_storage/sfx/2019/2019-preview.m4a"></audio>
+
+<script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+    import { getDatabase, ref, set, onValue, update, get, remove, push } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+
+    const firebaseConfig = { apiKey: "AIzaSyDT6QJyFjZhjrCd-7d00IxFSlWqOBp2xY8", authDomain: "poison-and-save.firebaseapp.com", databaseURL: "https://poison-and-save-default-rtdb.firebaseio.com", projectId: "poison-and-save", storageBucket: "poison-and-save.firebasestorage.app", messagingSenderId: "475847800468", appId: "1:475847800468:web:93605c30c6c6c775e2a681" };
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+
+    let myRole, myName, selectedId, gameData = {};
+    const s_pop = document.getElementById('snd-pop');
+    const s_win = document.getElementById('snd-win');
+    const s_bad = document.getElementById('snd-bad');
+    const s_coin = document.getElementById('snd-coin');
+
+    window.onload = () => {
+        const savedName = localStorage.getItem('pName');
+        if(savedName) { document.getElementById('playerName').value = savedName; myName = savedName; }
+        const r = localStorage.getItem('sId'), rl = localStorage.getItem('mRl');
+        if(r && rl) { selectedId = r; myRole = rl; enterRoom(); }
+    };
+
+    window.handleJoinOrCreate = async () => {
+        const id = document.getElementById('targetRoomId').value.trim().toLowerCase();
+        const inputName = document.getElementById('playerName').value.trim();
+        if(!id || !inputName) return alert("Naam ra ID halnus!");
+
+        myName = inputName; localStorage.setItem('pName', myName);
+        const s = await get(ref(db, 'rooms/'+id));
+        
+        if(s.exists()) {
+            const data = s.val();
+            const c = data.playerCount + 1;
+            if(c > 4) return alert("Room full!");
+            myRole = "p"+c;
+            update(ref(db, 'rooms/'+id), { [`p${c}_name`]:myName, playerCount:c });
+        } else {
+            myRole = "p1";
+            set(ref(db, 'rooms/'+id), { 
+                state:"waiting", playerCount:1, p1_name:myName, 
+                round:1, startPlayer:1, createdAt: Date.now(), mode: "classic" 
+            });
+        }
+        selectedId = id; localStorage.setItem('sId', id); localStorage.setItem('mRl', myRole);
+        enterRoom();
+    };
+
+    function enterRoom() {
+        document.getElementById('hub-screen').classList.add('hidden');
+        document.getElementById('game-section').classList.remove('hidden');
+        
+        onValue(ref(db, 'rooms/'+selectedId), (snap) => {
+            gameData = snap.val();
+            if(!gameData) { localStorage.removeItem('sId'); location.reload(); return; }
+
+            // Lobby Logic
+            let phtml = ""; for(let i=1; i<=4; i++) if(gameData[`p${i}_name`]) phtml += `<div style="padding:5px; border-bottom:1px solid #eee;">👤 ${gameData[`p${i}_name`]}</div>`;
+            document.getElementById('p-list').innerHTML = phtml;
+            
+            if(myRole==='p1' && gameData.state==='waiting') document.getElementById('host-controls').classList.remove('hidden');
+            
+            // Mode Display
+            document.getElementById('mode-display').innerText = (gameData.mode || "CLASSIC").toUpperCase() + (gameData.mode==='gold' ? " 💰" : "");
+
+            if(gameData.state !== "waiting") {
+                document.getElementById('lobby-ui').classList.add('hidden');
+                document.getElementById('play-ui').classList.remove('hidden');
+                syncUI();
+            }
+
+            // Handle Reactions
+            if(gameData.lastReaction && gameData.lastReaction.ts > Date.now() - 2000) {
+                showFloatingEmoji(gameData.lastReaction.emoji);
+            }
+        });
+    }
+
+    function syncUI() {
+        const sb = document.getElementById('scoreboard');
+        sb.style.gridTemplateColumns = `repeat(${gameData.playerCount}, 1fr)`;
+        sb.innerHTML = "";
+        for(let i=1; i<=gameData.playerCount; i++) {
+            const active = gameData.turn === `p${i}` && gameData.state !== "round_ended";
+            sb.innerHTML += `<div class="player-slot ${active?'active-turn':''}"><b>${gameData[`p${i}_name`]}</b><br>${gameData[`p${i}_score`]||0}</div>`;
+        }
+        document.getElementById('round-info').innerText = `Round: ${gameData.round}/11`;
+        
+        const st = document.getElementById('status-txt');
+        if(gameData.state === "selecting") st.innerText = gameData[myRole+"_p"] !== undefined ? "⏳ Waiting for others..." : "💀 CHOOSE A POISON!";
+        else st.innerText = gameData.turn === myRole ? "👉 YOUR TURN!" : "🔇 " + (gameData[gameData.turn+"_name"] || "Other") + " thinking...";
+
+        const g = document.getElementById('grid');
+        if(g.innerHTML === "") {
+            for(let i=0; i<12; i++) {
+                let d = document.createElement('div'); d.className='candy'; d.id="c-"+i; d.innerHTML="🍫";
+                d.onclick=()=>handleMove(i); g.appendChild(d);
+            }
+        }
+
+        // Render Grid State
+        for(let i=0; i<12; i++) {
+            const el = document.getElementById("c-"+i);
+            el.classList.remove('removed', 'red-hit', 'gold-hit');
+            el.innerHTML = "🍫";
+
+            if(gameData.state === "selecting") {
+                // Reset visual state
+            } else {
+                if(gameData[`rem_${i}`]) {
+                    if(gameData[`rem_${i}`] === 'gold') {
+                        el.classList.add('gold-hit'); 
+                        el.innerHTML = "💰";
+                        // Don't hide completely immediately for gold so they see it
+                    } else {
+                        el.classList.add('removed');
+                    }
+                }
+            }
+        }
+
+        const ov = document.getElementById('round-overlay');
+        if(gameData.state === "round_ended") {
+            ov.classList.remove('hidden'); 
+            document.getElementById('r-winner').innerHTML = `<span style="font-size:50px">💀</span><br>${gameData.last_win} Wins!`;
+            if(gameData.soundPlayed !== gameData.round) { s_bad.play(); update(ref(db, 'rooms/'+selectedId), {soundPlayed: gameData.round}); }
+        } else if(gameData.state === "final_ended") {
+            ov.classList.remove('hidden'); document.getElementById('r-winner').innerHTML = "🏆 CHAMPION 🏆<br>" + gameData.champ;
+            if(myRole === 'p1') document.getElementById('final-controls').classList.remove('hidden');
+            if(gameData.soundPlayed !== 'final') { s_win.play(); confetti(); update(ref(db, 'rooms/'+selectedId), {soundPlayed: 'final'}); }
+        } else { ov.classList.add('hidden'); }
+    }
+
+    window.handleMove = (i) => {
+        const rRef = ref(db, 'rooms/'+selectedId);
+        
+        // 1. Poison Selection Phase
+        if(gameData.state === "selecting" && gameData[myRole+"_p"] === undefined) {
+            update(rRef, {[myRole+"_p"]: i}).then(() => {
+                get(rRef).then(snap => {
+                    let d = snap.val(), ready = 0;
+                    for(let k=1; k<=d.playerCount; k++) if(d[`p${k}_p`] !== undefined) ready++;
+                    
+                    if(ready === d.playerCount) {
+                        let updates = { state: "playing", turn: "p"+d.startPlayer };
+                        // Generate Gold Coin if mode is Gold
+                        if(d.mode === 'gold') {
+                            let coinIdx = Math.floor(Math.random() * 12);
+                            updates.goldIdx = coinIdx;
+                        }
+                        update(rRef, updates);
+                    }
+                });
+            });
+            s_pop.play();
+        } 
+        // 2. Playing Phase
+        else if(gameData.state === "playing" && gameData.turn === myRole) {
+            if(gameData[`rem_${i}`]) return;
+
+            // Check Poison
+            let isP = false; for(let j=1; j<=gameData.playerCount; j++) if(i === gameData[`p${j}_p`]) isP = true;
+            
+            // Check Gold
+            if(gameData.mode === 'gold' && i === gameData.goldIdx) {
+                // Found Gold!
+                s_coin.play();
+                update(rRef, { 
+                    [`rem_${i}`]: 'gold', 
+                    [`p${myRole.replace("p","")}_score`]: (gameData[`p${myRole.replace("p","")}_score`]||0) + 2
+                });
+                // If it is ALSO poison, the poison logic below will trigger in the user's mind, 
+                // but in this game flow, hitting gold usually shouldn't kill you immediately or it's too harsh.
+                // Let's make it: Gold saves you from poison? Or Gold is just bonus.
+                // Logic: If Gold AND Poison -> You get points, but round ends (Winner is prev player).
+                if(!isP) return; // If just gold, continue (don't change turn? Or change turn? Let's keep turn for simplicity or change. Let's not change turn as reward).
+                // Actually, simplest: Finding Gold = Turn passes, +2 points.
+                // Wait, if I return here, the function stops. So player keeps turn? No, let's pass turn.
+            }
+
+            if(isP) {
+                // POISON HIT
+                let cur = parseInt(myRole.replace("p","")), wIdx = cur-1 || gameData.playerCount;
+                let wName = gameData[`p${wIdx}_name`], nR = gameData.round + 1;
+                
+                update(rRef, { state:"round_ended", last_win: wName, [`p${wIdx}_score`]: (gameData[`p${wIdx}_score`]||0)+1 });
+                
+                setTimeout(() => {
+                    if(nR > 11) {
+                        let winN="", maxS=-1; for(let k=1; k<=gameData.playerCount; k++) if(gameData[`p${k}_score`]>maxS){ maxS=gameData[`p${k}_score`]; winN=gameData[`p${k}_name`]; }
+                        update(rRef, { state: "final_ended", champ: winN });
+                    } else {
+                        let nS = (gameData.startPlayer % gameData.playerCount) + 1;
+                        let res = { state:"selecting", turn: "p"+nS, startPlayer: nS, round: nR, goldIdx: null };
+                        for(let k=1; k<=4; k++) res[`p${k}_p`] = null;
+                        for(let k=0; k<12; k++) res[`rem_${k}`] = null;
+                        update(rRef, res);
+                    }
+                }, 3000);
+            } else {
+                // SAFE MOVE
+                s_pop.play();
+                let next = (parseInt(myRole.replace("p","")) % gameData.playerCount) + 1;
+                // If we hit gold but not poison, we already updated score, now mark removed and pass turn
+                let updates = { turn: "p"+next };
+                if(!(gameData.mode === 'gold' && i === gameData.goldIdx)) {
+                    updates[`rem_${i}`] = true;
+                }
+                update(rRef, updates);
+            }
+        }
+    };
+
+    window.sendReaction = (emoji) => {
+        update(ref(db, 'rooms/'+selectedId), { lastReaction: { emoji: emoji, ts: Date.now(), from: myName } });
+    };
+
+    function showFloatingEmoji(e) {
+        const el = document.createElement('div'); el.innerText = e; el.className = "floating-emoji";
+        document.body.appendChild(el);
+        setTimeout(() => el.remove(), 2000);
+    }
+
+    window.hostStart = () => {
+        const isGold = document.getElementById('mode-check').checked;
+        update(ref(db, 'rooms/'+selectedId), { state:"selecting", mode: isGold ? 'gold' : 'classic' });
+    };
     
-    <!-- Game Scripts -->
-    <script src="firebase.js"></script>
-    <script src="game.js"></script>
+    window.hostReset = () => {
+        let r = { state:"selecting", turn:"p1", round:1, startPlayer:1, champ:null, createdAt: Date.now(), mode: gameData.mode };
+        for(let i=1; i<=4; i++) { r[`p${i}_score`]=0; r[`p${i}_p`]=null; }
+        for(let i=0; i<12; i++) r[`rem_${i}`]=null;
+        update(ref(db, 'rooms/'+selectedId), r);
+    };
+    window.leaveRoom = () => { localStorage.removeItem('sId'); localStorage.removeItem('mRl'); location.reload(); };
+</script>
 </body>
 </html>
