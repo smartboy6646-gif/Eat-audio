@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Poison & Save: Ultimate v3</title>
+    <title>Poison & Save: Ultimate v4</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <style>
         :root { --p: #780000; --bg: #fdf0d5; --acc: #003049; --g: #fcbf49; --coin: #ffd700; }
@@ -41,17 +41,10 @@
         input:checked + .slider { background-color: var(--g); }
         input:checked + .slider:before { transform: translateX(20px); }
 
-        /* --- NEW CHAMPION SCREEN CSS --- */
         .winner-card {
-            background: white;
-            color: #333;
-            width: 90%;
-            padding: 30px 20px;
-            border-radius: 25px;
-            text-align: center;
-            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-            animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-            border: 4px solid var(--g);
+            background: white; color: #333; width: 90%; padding: 30px 20px; border-radius: 25px;
+            text-align: center; box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); border: 4px solid var(--g);
         }
         .winner-card h1 { margin: 10px 0; color: var(--p); font-size: 32px; text-transform: uppercase; }
         .winner-card h2 { margin: 0; color: var(--g); font-size: 18px; letter-spacing: 2px; }
@@ -60,16 +53,32 @@
         .btn-exit { background: #e63946; color: white; }
         .btn-play { background: #2a9d8f; color: white; }
         @keyframes popIn { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+        /* --- NEW CSS FOR ROOM LIST --- */
+        #active-rooms {
+            margin-top: 15px; max-height: 200px; overflow-y: auto;
+            width: 100%; border-top: 2px solid #eee; padding-top: 10px;
+        }
+        .room-item {
+            background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px;
+            padding: 10px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;
+            font-size: 13px; color: #555;
+        }
+        .room-status { font-weight: bold; color: var(--p); }
     </style>
 </head>
 <body>
 
 <div id="game-container">
     <div id="hub-screen">
-        <h2 style="text-align:center; color:var(--p);">🍫 Poison & Save <span style="font-size:12px; color:#666;">v3</span></h2>
+        <h2 style="text-align:center; color:var(--p);">🍫 Poison & Save <span style="font-size:12px; color:#666;">v4</span></h2>
         <input type="text" id="playerName" placeholder="Tapaiko Naam">
         <input type="text" id="targetRoomId" placeholder="Room ID (Ex: 1234)">
         <button class="btn" style="background:var(--acc);" onclick="handleJoinOrCreate()">JOIN / CREATE ROOM</button>
+        
+        <div id="active-rooms">
+            <div style="text-align:center; font-size:12px; color:#999;">Loading active rooms...</div>
+        </div>
     </div>
 
     <div id="game-section" class="hidden" style="height:100%; display:flex; flex-direction:column;">
@@ -116,13 +125,13 @@
 </div>
 
 <audio id="snd-pop" src="https://assets.mixkit.co/active_storage/sfx/2571/2571-preview.m4a"></audio>
-<audio id="snd-win" src="https://cdn.discordapp.com/attachments/1420003318096461825/1463347479490859285/hi-hi-hi-ha-clash-royale.mp3?ex=6971800a&is=69702e8a&hm=d034b4f0fa78ffd8e620760af5835a0a41a69dbcc2d34409a07e656b24dca86e&"></audio>
+<audio id="snd-win" src="https://assets.mixkit.co/active_storage/sfx/1435/1435-preview.m4a"></audio>
 <audio id="snd-bad" src="https://assets.mixkit.co/active_storage/sfx/950/950-preview.m4a"></audio>
 <audio id="snd-coin" src="https://assets.mixkit.co/active_storage/sfx/2019/2019-preview.m4a"></audio>
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getDatabase, ref, set, onValue, update, get, remove, push } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+    import { getDatabase, ref, set, onValue, update, get, remove, onDisconnect } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
     const firebaseConfig = { apiKey: "AIzaSyDT6QJyFjZhjrCd-7d00IxFSlWqOBp2xY8", authDomain: "poison-and-save.firebaseapp.com", databaseURL: "https://poison-and-save-default-rtdb.firebaseio.com", projectId: "poison-and-save", storageBucket: "poison-and-save.firebasestorage.app", messagingSenderId: "475847800468", appId: "1:475847800468:web:93605c30c6c6c775e2a681" };
     const app = initializeApp(firebaseConfig);
@@ -139,6 +148,36 @@
         if(savedName) { document.getElementById('playerName').value = savedName; myName = savedName; }
         const r = localStorage.getItem('sId'), rl = localStorage.getItem('mRl');
         if(r && rl) { selectedId = r; myRole = rl; enterRoom(); }
+
+        // --- NEW: LISTEN FOR ACTIVE ROOMS ---
+        onValue(ref(db, 'rooms'), (snapshot) => {
+            const listDiv = document.getElementById('active-rooms');
+            listDiv.innerHTML = '<div style="font-size:12px; color:#777; margin-bottom:5px;">👇 Active Rooms (ID Hidden)</div>';
+            
+            if(!snapshot.exists()) {
+                listDiv.innerHTML += '<div style="text-align:center; font-size:12px;">No active rooms. Create one!</div>';
+                return;
+            }
+
+            snapshot.forEach(child => {
+                const room = child.val();
+                const roomId = child.key;
+                // Only show waiting rooms or rooms in progress
+                if(room.p1_name) { 
+                    listDiv.innerHTML += `
+                    <div class="room-item">
+                        <div>
+                            <div style="font-weight:bold; color:#333;">Host: ${room.p1_name}</div>
+                            <div style="font-size:10px; color:#888;">ID: <span style="letter-spacing:2px; font-weight:bold; color:var(--p);">****</span></div>
+                        </div>
+                        <div style="text-align:right;">
+                            <div class="room-status">${room.state === 'waiting' ? 'WAITING' : 'PLAYING'}</div>
+                            <div style="font-size:10px;">${room.playerCount}/4 Players</div>
+                        </div>
+                    </div>`;
+                }
+            });
+        });
     };
 
     window.handleJoinOrCreate = async () => {
@@ -147,21 +186,28 @@
         if(!id || !inputName) return alert("Naam ra ID halnus!");
 
         myName = inputName; localStorage.setItem('pName', myName);
-        const s = await get(ref(db, 'rooms/'+id));
+        const rRef = ref(db, 'rooms/'+id);
+        const s = await get(rRef);
         
         if(s.exists()) {
             const data = s.val();
             const c = data.playerCount + 1;
             if(c > 4) return alert("Room full!");
             myRole = "p"+c;
-            update(ref(db, 'rooms/'+id), { [`p${c}_name`]:myName, playerCount:c });
+            update(rRef, { [`p${c}_name`]:myName, playerCount:c });
         } else {
             myRole = "p1";
-            set(ref(db, 'rooms/'+id), { 
+            set(rRef, { 
                 state:"waiting", playerCount:1, p1_name:myName, 
                 round:1, startPlayer:1, createdAt: Date.now(), mode: "classic" 
             });
         }
+        
+        // --- AUTO DELETE SETUP ON DISCONNECT ---
+        onDisconnect(ref(db, `rooms/${id}/${myRole}_name`)).remove();
+        // We can't easily auto-decrement count safely on pure disconnect without cloud functions,
+        // but removing the name allows us to check for "zombie" rooms later.
+
         selectedId = id; localStorage.setItem('sId', id); localStorage.setItem('mRl', myRole);
         enterRoom();
     };
@@ -172,7 +218,14 @@
         
         onValue(ref(db, 'rooms/'+selectedId), (snap) => {
             gameData = snap.val();
-            if(!gameData) { localStorage.removeItem('sId'); location.reload(); return; }
+            
+            // If room is deleted by others/host
+            if(!gameData) { 
+                alert("Room Closed / Ended");
+                localStorage.removeItem('sId'); localStorage.removeItem('mRl'); 
+                location.reload(); 
+                return; 
+            }
 
             let phtml = ""; for(let i=1; i<=4; i++) if(gameData[`p${i}_name`]) phtml += `<div style="padding:5px; border-bottom:1px solid #eee;">👤 ${gameData[`p${i}_name`]}</div>`;
             document.getElementById('p-list').innerHTML = phtml;
@@ -198,14 +251,17 @@
         sb.style.gridTemplateColumns = `repeat(${gameData.playerCount}, 1fr)`;
         sb.innerHTML = "";
         for(let i=1; i<=gameData.playerCount; i++) {
-            const active = gameData.turn === `p${i}` && gameData.state !== "round_ended";
-            sb.innerHTML += `<div class="player-slot ${active?'active-turn':''}"><b>${gameData[`p${i}_name`]}</b><br>${gameData[`p${i}_score`]||0}</div>`;
+            // Only show score if player name exists
+            if(gameData[`p${i}_name`]) {
+                const active = gameData.turn === `p${i}` && gameData.state !== "round_ended";
+                sb.innerHTML += `<div class="player-slot ${active?'active-turn':''}"><b>${gameData[`p${i}_name`]}</b><br>${gameData[`p${i}_score`]||0}</div>`;
+            }
         }
         document.getElementById('round-info').innerText = `Round: ${gameData.round}/11`;
         
         const st = document.getElementById('status-txt');
         if(gameData.state === "selecting") st.innerText = gameData[myRole+"_p"] !== undefined ? "⏳ Waiting for others..." : "💀 CHOOSE A POISON!";
-        else st.innerText = gameData.turn === myRole ? "👉 YOUR TURN!" : "🔇 " + (gameData[gameData.turn+"_name"] || "Other") + " thinking...";
+        else st.innerText = gameData.turn === myRole ? "👉 YOUR TURN!" : "🔇 " + (gameData[gameData.turn+"_name"] || "Opponent") + " thinking...";
 
         const g = document.getElementById('grid');
         if(g.innerHTML === "") {
@@ -233,22 +289,17 @@
             }
         }
 
-        // --- UPDATED OVERLAY LOGIC ---
         const ov = document.getElementById('round-overlay');
         
         if(gameData.state === "round_ended") {
             ov.classList.remove('hidden'); 
-            // Simple display for round winner
             ov.innerHTML = `<h1 style="text-align:center; color:white;"><span style="font-size:50px">💀</span><br>${gameData.last_win} Wins!</h1>`;
             if(gameData.soundPlayed !== gameData.round) { s_bad.play(); update(ref(db, 'rooms/'+selectedId), {soundPlayed: gameData.round}); }
         
         } else if(gameData.state === "final_ended") {
             ov.classList.remove('hidden');
-            
-            // Nice Champion Card Layout
             const isHost = myRole === 'p1';
             const playAgainBtn = isHost ? `<button class="btn-small btn-play" onclick="hostReset()">PLAY AGAIN 🔄</button>` : '';
-            
             ov.innerHTML = `
                 <div class="winner-card">
                     <div style="font-size: 60px">🏆</div>
@@ -260,7 +311,6 @@
                     </div>
                 </div>
             `;
-            
             if(gameData.soundPlayed !== 'final') { s_win.play(); confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } }); update(ref(db, 'rooms/'+selectedId), {soundPlayed: 'final'}); }
         
         } else { ov.classList.add('hidden'); }
@@ -355,8 +405,44 @@
         for(let i=0; i<12; i++) r[`rem_${i}`]=null;
         update(ref(db, 'rooms/'+selectedId), r);
     };
-    window.leaveRoom = () => { localStorage.removeItem('sId'); localStorage.removeItem('mRl'); location.reload(); };
+
+    // --- UPDATED LEAVE FUNCTION WITH AUTO DELETE LOGIC ---
+    window.leaveRoom = async () => {
+        if(!selectedId || !myRole) return location.reload();
+        
+        try {
+            // 1. Remove ONLY my name first
+            await update(ref(db, `rooms/${selectedId}`), { 
+                [`${myRole}_name`]: null 
+            });
+
+            // 2. Fetch fresh data to check who is left
+            const s = await get(ref(db, `rooms/${selectedId}`));
+            if(s.exists()) {
+                const d = s.val();
+                
+                // 3. Count active players (check if names exist)
+                let activeCount = 0;
+                for(let i=1; i<=4; i++) {
+                    if(d[`p${i}_name`]) activeCount++;
+                }
+
+                // 4. If no players left, DELETE the room
+                if(activeCount === 0) {
+                    await remove(ref(db, `rooms/${selectedId}`));
+                } else {
+                    // Update player count for display
+                    await update(ref(db, `rooms/${selectedId}`), { playerCount: activeCount });
+                }
+            }
+        } catch(e) {
+            console.error(e);
+        }
+
+        localStorage.removeItem('sId');
+        localStorage.removeItem('mRl');
+        location.reload();
+    };
 </script>
 </body>
 </html>
-
