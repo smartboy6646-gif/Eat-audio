@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Poison & Save: Ultimate v6</title>
+    <title>Poison & Save: Ultimate v7 (Draw Fix)</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <style>
         :root { --p: #780000; --bg: #fdf0d5; --acc: #003049; --g: #fcbf49; --coin: #ffd700; }
@@ -65,13 +65,14 @@
         }
         .room-item:hover { background: #e9ecef; transform: translateX(5px); }
         .badge-new { background: var(--g); color: #333; padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: bold; margin-left: 5px; }
+        .badge-offline { background: #ccc; color: #555; padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: bold; margin-left: 5px; }
     </style>
 </head>
 <body>
 
 <div id="game-container">
     <div id="hub-screen">
-        <h2 style="text-align:center; color:var(--p);">🍫 Poison & Save <span style="font-size:12px; color:#666;">v6</span></h2>
+        <h2 style="text-align:center; color:var(--p);">🍫 Poison & Save <span style="font-size:12px; color:#666;">v7</span></h2>
         <input type="text" id="playerName" placeholder="Tapaiko Naam">
         <input type="text" id="targetRoomId" placeholder="Room ID (Ex: 1234)">
         <button class="btn" style="background:var(--acc);" onclick="handleJoinOrCreate()">JOIN / CREATE ROOM</button>
@@ -132,7 +133,7 @@
 
 <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
-    import { getDatabase, ref, set, onValue, update, get, remove, onDisconnect } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
+    import { getDatabase, ref, set, onValue, update, get, remove, onDisconnect, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js";
 
     const firebaseConfig = { apiKey: "AIzaSyDT6QJyFjZhjrCd-7d00IxFSlWqOBp2xY8", authDomain: "poison-and-save.firebaseapp.com", databaseURL: "https://poison-and-save-default-rtdb.firebaseio.com", projectId: "poison-and-save", storageBucket: "poison-and-save.firebasestorage.app", messagingSenderId: "475847800468", appId: "1:475847800468:web:93605c30c6c6c775e2a681" };
     const app = initializeApp(firebaseConfig);
@@ -156,7 +157,15 @@
             if(!snapshot.exists()) { listDiv.innerHTML = '<div style="text-align:center; font-size:12px; padding:10px;">No active rooms. Create one!</div>'; return; }
 
             let roomsArr = [];
-            snapshot.forEach(child => { roomsArr.push({ key: child.key, val: child.val() }); });
+            snapshot.forEach(child => { 
+                const rm = child.val();
+                // 2 MINUTE CLEANUP LOGIC
+                if(rm.p1_leftAt && (Date.now() - rm.p1_leftAt > 120000)) {
+                    remove(ref(db, 'rooms/'+child.key)); // Auto-delete expired rooms
+                } else {
+                    roomsArr.push({ key: child.key, val: rm }); 
+                }
+            });
             roomsArr.sort((a, b) => (b.val.createdAt || 0) - (a.val.createdAt || 0));
 
             let html = '<div style="font-size:12px; color:#777; margin-bottom:5px;">👇 Active Rooms (Tap to Fill ID)</div>';
@@ -167,11 +176,25 @@
                 if(room.p1_name) { 
                     activeCount++;
                     const isNew = (Date.now() - (room.createdAt||0)) < 60000;
+                    const isOffline = room.p1_leftAt ? true : false;
                     const statusClass = room.state === 'waiting' ? 'color:#2a9d8f' : 'color:#e76f51';
-                    html += `<div class="room-item" onclick="fillRoomId('${item.key}')"><div><div style="font-weight:bold; color:#333;">${room.p1_name}'s Room ${isNew ? '<span class="badge-new">NEW</span>' : ''}</div><div style="font-size:10px; color:#888;">ID: <span style="font-weight:bold; color:var(--p);">****</span></div></div><div style="text-align:right;"><div style="font-weight:bold; font-size:11px; ${statusClass}">${room.state === 'waiting' ? 'WAITING' : 'PLAYING'}</div><div style="font-size:10px;">${room.playerCount}/4 Players</div></div></div>`;
+                    
+                    html += `<div class="room-item" onclick="fillRoomId('${item.key}')">
+                                <div>
+                                    <div style="font-weight:bold; color:#333;">${room.p1_name}'s Room 
+                                        ${isNew ? '<span class="badge-new">NEW</span>' : ''}
+                                        ${isOffline ? '<span class="badge-offline">OFFLINE (2m)</span>' : ''}
+                                    </div>
+                                    <div style="font-size:10px; color:#888;">ID: <span style="font-weight:bold; color:var(--p);">****</span></div>
+                                </div>
+                                <div style="text-align:right;">
+                                    <div style="font-weight:bold; font-size:11px; ${statusClass}">${room.state === 'waiting' ? 'WAITING' : 'PLAYING'}</div>
+                                    <div style="font-size:10px;">${room.playerCount}/4 Players</div>
+                                </div>
+                            </div>`;
                 }
             });
-            if(activeCount === 0) html += '<div style="text-align:center; font-size:12px; margin-top:10px;">All rooms are empty/closed.</div>';
+            if(activeCount === 0) html += '<div style="text-align:center; font-size:12px; margin-top:10px;">All rooms are empty.</div>';
             listDiv.innerHTML = html;
         });
     };
@@ -190,23 +213,44 @@
         const rRef = ref(db, 'rooms/'+id);
         const s = await get(rRef);
         
+        let updates = {};
+
         if(s.exists()) {
             const data = s.val();
-            if(!data.p1_name) {
-                 await set(rRef, { state:"waiting", playerCount:1, p1_name:myName, round:1, startPlayer:1, createdAt: Date.now(), mode: "classic" });
+            // If reconnecting within 2 mins
+            if(data.p1_name === myName && data.p1_leftAt) {
                  myRole = "p1";
+                 updates = { p1_leftAt: null }; // Remove offline status
+            } else if(!data.p1_name) {
+                 myRole = "p1";
+                 updates = { state:"waiting", playerCount:1, p1_name:myName, p1_wins:0, round:1, startPlayer:1, createdAt: Date.now(), mode: "classic", p1_leftAt: null };
             } else {
-                const c = data.playerCount + 1;
-                if(c > 4) return alert("Room full!");
-                myRole = "p"+c;
-                await update(rRef, { [`p${c}_name`]:myName, playerCount:c });
+                // Check if I am already in the room (rejoin)
+                let found = false;
+                for(let k=1; k<=4; k++) {
+                     if(data[`p${k}_name`] === myName) { 
+                         myRole = `p${k}`; 
+                         updates = { [`p${k}_leftAt`]: null }; 
+                         found = true; 
+                     }
+                }
+                if(!found) {
+                    const c = data.playerCount + 1;
+                    if(c > 4) return alert("Room full!");
+                    myRole = "p"+c;
+                    updates = { [`p${c}_name`]:myName, [`p${c}_wins`]:0, playerCount:c, [`p${c}_leftAt`]: null };
+                }
             }
         } else {
             myRole = "p1";
-            await set(rRef, { state:"waiting", playerCount:1, p1_name:myName, round:1, startPlayer:1, createdAt: Date.now(), mode: "classic" });
+            updates = { state:"waiting", playerCount:1, p1_name:myName, p1_wins:0, round:1, startPlayer:1, createdAt: Date.now(), mode: "classic", p1_leftAt: null };
         }
         
-        onDisconnect(ref(db, `rooms/${id}/${myRole}_name`)).remove();
+        await update(rRef, updates);
+        
+        // PERSISTENCE: Don't remove Name, just set timestamp
+        onDisconnect(ref(db, `rooms/${id}/${myRole}_leftAt`)).set(serverTimestamp());
+        
         selectedId = id; localStorage.setItem('sId', id); localStorage.setItem('mRl', myRole);
         enterRoom();
     };
@@ -217,9 +261,19 @@
         
         onValue(ref(db, 'rooms/'+selectedId), (snap) => {
             gameData = snap.val();
-            if(!gameData || !gameData[`${myRole}_name`]) { alert("Room Closed or You were removed."); localStorage.removeItem('sId'); localStorage.removeItem('mRl'); location.reload(); return; }
+            if(!gameData || !gameData[`${myRole}_name`]) { 
+                // Only alert if deleted, not if just offline
+                if(!gameData) { alert("Room Expired or Closed."); localStorage.removeItem('sId'); localStorage.removeItem('mRl'); location.reload(); }
+                return; 
+            }
 
-            let phtml = ""; for(let i=1; i<=4; i++) if(gameData[`p${i}_name`]) phtml += `<div style="padding:5px; border-bottom:1px solid #eee;">👤 ${gameData[`p${i}_name`]}</div>`;
+            let phtml = ""; 
+            for(let i=1; i<=4; i++) {
+                if(gameData[`p${i}_name`]) {
+                    let status = gameData[`p${i}_leftAt`] ? " (Offline)" : "";
+                    phtml += `<div style="padding:5px; border-bottom:1px solid #eee; ${gameData[`p${i}_leftAt`] ? 'color:#999':''}">👤 ${gameData[`p${i}_name`]}${status}</div>`;
+                }
+            }
             document.getElementById('p-list').innerHTML = phtml;
             
             if(myRole==='p1' && gameData.state==='waiting') document.getElementById('host-controls').classList.remove('hidden');
@@ -246,11 +300,11 @@
         for(let i=1; i<=gameData.playerCount; i++) {
             if(gameData[`p${i}_name`]) {
                 const active = gameData.turn === `p${i}` && gameData.state !== "round_ended";
-                sb.innerHTML += `<div class="player-slot ${active?'active-turn':''}"><b>${gameData[`p${i}_name`]}</b><br>${gameData[`p${i}_score`]||0}</div>`;
+                const isOffline = gameData[`p${i}_leftAt`] ? true : false;
+                sb.innerHTML += `<div class="player-slot ${active?'active-turn':''}" style="${isOffline?'opacity:0.5':''}"><b>${gameData[`p${i}_name`]}</b><br>${gameData[`p${i}_score`]||0} <span style="font-size:10px">(${gameData[`p${i}_wins`]||0}W)</span></div>`;
             }
         }
         
-        // Dynamic Round Text
         const isGold = gameData.mode === 'gold';
         document.getElementById('round-info').innerText = isGold ? `Round: ${gameData.round}/11` : `Round: ${gameData.round}`;
         
@@ -354,29 +408,51 @@
                 let cur = parseInt(myRole.replace("p","")), wIdx = cur-1 || gameData.playerCount;
                 let wName = gameData[`p${wIdx}_name`];
                 let newScore = (gameData[`p${wIdx}_score`]||0) + 1;
+                // INCREMENT WINS
+                let newWins = (gameData[`p${wIdx}_wins`]||0) + 1;
+                
                 let nR = gameData.round + 1;
                 
-                update(rRef, { state:"round_ended", last_win: wName, [`p${wIdx}_score`]: newScore });
+                update(rRef, { 
+                    state:"round_ended", 
+                    last_win: wName, 
+                    [`p${wIdx}_score`]: newScore,
+                    [`p${wIdx}_wins`]: newWins
+                });
                 
                 setTimeout(() => {
-                    // --- UPDATED WINNING LOGIC ---
                     let isClassicWin = (gameData.mode !== 'gold' && newScore >= 6);
                     let isGoldEnd = (gameData.mode === 'gold' && nR > 11);
 
                     if(isClassicWin || isGoldEnd) {
-                        let champion = wName; // Default for classic
+                        let champion = wName; 
+                        
                         if(isGoldEnd) {
-                            // Calculate max score dynamically including the point just won
+                            // TIE BREAKER LOGIC
                             let maxS = -1;
+                            let maxWins = -1;
+
                             for(let k=1; k<=gameData.playerCount; k++) {
                                 let s = (gameData[`p${k}_score`]||0);
-                                if(k === wIdx) s = newScore; // Use updated score
-                                if(s > maxS) { maxS = s; champion = gameData[`p${k}_name`]; }
+                                let w = (gameData[`p${k}_wins`]||0);
+                                if(k === wIdx) { s = newScore; w = newWins; } // Use latest
+
+                                if(s > maxS) { 
+                                    maxS = s; 
+                                    maxWins = w;
+                                    champion = gameData[`p${k}_name`]; 
+                                } else if (s === maxS) {
+                                    // Tie found: Check Wins
+                                    if(w > maxWins) {
+                                        maxWins = w;
+                                        champion = gameData[`p${k}_name`];
+                                    }
+                                    // If wins also tied, keeps previous champ (or random)
+                                }
                             }
                         }
                         update(rRef, { state: "final_ended", champ: champion });
                     } else {
-                        // Continue to Next Round
                         let nS = (gameData.startPlayer % gameData.playerCount) + 1;
                         let res = { state:"selecting", turn: "p"+nS, startPlayer: nS, round: nR, goldIdx: null };
                         for(let k=1; k<=4; k++) res[`p${k}_p`] = null;
@@ -403,7 +479,7 @@
     function showFloatingEmoji(e) {
         const el = document.createElement('div'); el.innerText = e; el.className = "floating-emoji";
         document.body.appendChild(el);
-        s_emoji.currentTime = 0; s_emoji.play().catch(e=>console.log(e)); // PLAY FUNNY SOUND
+        s_emoji.currentTime = 0; s_emoji.play().catch(e=>console.log(e));
         setTimeout(() => el.remove(), 2000);
     }
 
@@ -414,24 +490,23 @@
     
     window.hostReset = () => {
         let r = { state:"selecting", turn:"p1", round:1, startPlayer:1, champ:null, createdAt: Date.now(), mode: gameData.mode };
-        for(let i=1; i<=4; i++) { r[`p${i}_score`]=0; r[`p${i}_p`]=null; }
+        for(let i=1; i<=4; i++) { r[`p${i}_score`]=0; r[`p${i}_wins`]=0; r[`p${i}_p`]=null; }
         for(let i=0; i<12; i++) r[`rem_${i}`]=null;
         update(ref(db, 'rooms/'+selectedId), r);
     };
 
     window.leaveRoom = async () => {
         if(!selectedId || !myRole) return location.reload();
-        try {
-            await update(ref(db, `rooms/${selectedId}`), { [`${myRole}_name`]: null });
-            const s = await get(ref(db, `rooms/${selectedId}`));
-            if(s.exists()) {
-                const d = s.val();
-                let activeCount = 0;
-                for(let i=1; i<=4; i++) if(d[`p${i}_name`]) activeCount++;
-                if(activeCount === 0) await remove(ref(db, `rooms/${selectedId}`));
-                else await update(ref(db, `rooms/${selectedId}`), { playerCount: activeCount });
-            }
-        } catch(e) { console.error(e); }
+        // Manual leave removes name immediately
+        await update(ref(db, `rooms/${selectedId}`), { [`${myRole}_name`]: null, [`${myRole}_leftAt`]: null });
+        const s = await get(ref(db, `rooms/${selectedId}`));
+        if(s.exists()) {
+            const d = s.val();
+            let activeCount = 0;
+            for(let i=1; i<=4; i++) if(d[`p${i}_name`]) activeCount++;
+            if(activeCount === 0) await remove(ref(db, `rooms/${selectedId}`));
+            else await update(ref(db, `rooms/${selectedId}`), { playerCount: activeCount });
+        }
         localStorage.removeItem('sId'); localStorage.removeItem('mRl');
         location.reload();
     };
