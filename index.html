@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Poison & Save: Ultimate v4</title>
+    <title>Poison & Save: Ultimate v5</title>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <style>
         :root { --p: #780000; --bg: #fdf0d5; --acc: #003049; --g: #fcbf49; --coin: #ffd700; }
@@ -54,30 +54,32 @@
         .btn-play { background: #2a9d8f; color: white; }
         @keyframes popIn { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
-        /* --- NEW CSS FOR ROOM LIST --- */
+        /* --- UPDATED ROOM LIST CSS --- */
         #active-rooms {
-            margin-top: 15px; max-height: 200px; overflow-y: auto;
+            margin-top: 15px; max-height: 250px; overflow-y: auto;
             width: 100%; border-top: 2px solid #eee; padding-top: 10px;
         }
         .room-item {
             background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 8px;
-            padding: 10px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;
-            font-size: 13px; color: #555;
+            padding: 12px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;
+            font-size: 13px; color: #555; transition: 0.2s; cursor: pointer;
         }
+        .room-item:hover { background: #e9ecef; transform: translateX(5px); }
         .room-status { font-weight: bold; color: var(--p); }
+        .badge-new { background: var(--g); color: #333; padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: bold; margin-left: 5px; }
     </style>
 </head>
 <body>
 
 <div id="game-container">
     <div id="hub-screen">
-        <h2 style="text-align:center; color:var(--p);">🍫 Poison & Save <span style="font-size:12px; color:#666;">v4</span></h2>
+        <h2 style="text-align:center; color:var(--p);">🍫 Poison & Save <span style="font-size:12px; color:#666;">v5</span></h2>
         <input type="text" id="playerName" placeholder="Tapaiko Naam">
         <input type="text" id="targetRoomId" placeholder="Room ID (Ex: 1234)">
         <button class="btn" style="background:var(--acc);" onclick="handleJoinOrCreate()">JOIN / CREATE ROOM</button>
         
         <div id="active-rooms">
-            <div style="text-align:center; font-size:12px; color:#999;">Loading active rooms...</div>
+            <div style="text-align:center; font-size:12px; color:#999; padding:20px;">Checking Active Rooms...</div>
         </div>
     </div>
 
@@ -149,35 +151,64 @@
         const r = localStorage.getItem('sId'), rl = localStorage.getItem('mRl');
         if(r && rl) { selectedId = r; myRole = rl; enterRoom(); }
 
-        // --- NEW: LISTEN FOR ACTIVE ROOMS ---
+        // --- NEW: BETTER ROOM LIST LOGIC ---
         onValue(ref(db, 'rooms'), (snapshot) => {
             const listDiv = document.getElementById('active-rooms');
-            listDiv.innerHTML = '<div style="font-size:12px; color:#777; margin-bottom:5px;">👇 Active Rooms (ID Hidden)</div>';
             
             if(!snapshot.exists()) {
-                listDiv.innerHTML += '<div style="text-align:center; font-size:12px;">No active rooms. Create one!</div>';
+                listDiv.innerHTML = '<div style="text-align:center; font-size:12px; padding:10px;">No active rooms. Create one!</div>';
                 return;
             }
 
+            // Convert object to array for Sorting
+            let roomsArr = [];
             snapshot.forEach(child => {
-                const room = child.val();
-                const roomId = child.key;
-                // Only show waiting rooms or rooms in progress
+                roomsArr.push({ key: child.key, val: child.val() });
+            });
+
+            // Sort: Newest created first (Desc by timestamp)
+            roomsArr.sort((a, b) => (b.val.createdAt || 0) - (a.val.createdAt || 0));
+
+            let html = '<div style="font-size:12px; color:#777; margin-bottom:5px;">👇 Active Rooms (Tap to Fill ID)</div>';
+            let activeCount = 0;
+
+            roomsArr.forEach(item => {
+                const room = item.val;
+                const roomId = item.key;
+                
+                // CRITICAL FIX: Only show rooms that have a valid Host Name
+                // If Host disconnected, p1_name is removed, so we hide the room.
                 if(room.p1_name) { 
-                    listDiv.innerHTML += `
-                    <div class="room-item">
+                    activeCount++;
+                    const isNew = (Date.now() - (room.createdAt||0)) < 60000; // New if < 1 min old
+                    const statusClass = room.state === 'waiting' ? 'color:#2a9d8f' : 'color:#e76f51';
+                    
+                    html += `
+                    <div class="room-item" onclick="fillRoomId('${roomId}')">
                         <div>
-                            <div style="font-weight:bold; color:#333;">Host: ${room.p1_name}</div>
-                            <div style="font-size:10px; color:#888;">ID: <span style="letter-spacing:2px; font-weight:bold; color:var(--p);">****</span></div>
+                            <div style="font-weight:bold; color:#333;">
+                                ${room.p1_name}'s Room ${isNew ? '<span class="badge-new">NEW</span>' : ''}
+                            </div>
+                            <div style="font-size:10px; color:#888;">ID: <span style="font-weight:bold; color:var(--p);">****</span></div>
                         </div>
                         <div style="text-align:right;">
-                            <div class="room-status">${room.state === 'waiting' ? 'WAITING' : 'PLAYING'}</div>
+                            <div style="font-weight:bold; font-size:11px; ${statusClass}">${room.state === 'waiting' ? 'WAITING' : 'PLAYING'}</div>
                             <div style="font-size:10px;">${room.playerCount}/4 Players</div>
                         </div>
                     </div>`;
                 }
             });
+
+            if(activeCount === 0) html += '<div style="text-align:center; font-size:12px; margin-top:10px;">All rooms are empty/closed.</div>';
+            listDiv.innerHTML = html;
         });
+    };
+
+    // Helper to auto-fill ID when clicking a list item
+    window.fillRoomId = (id) => {
+        document.getElementById('targetRoomId').value = id;
+        // Optional: Auto focus name field
+        if(!document.getElementById('playerName').value) document.getElementById('playerName').focus();
     };
 
     window.handleJoinOrCreate = async () => {
@@ -191,22 +222,29 @@
         
         if(s.exists()) {
             const data = s.val();
-            const c = data.playerCount + 1;
-            if(c > 4) return alert("Room full!");
-            myRole = "p"+c;
-            update(rRef, { [`p${c}_name`]:myName, playerCount:c });
+            // If room exists but host name is missing (Zombie room), reset it!
+            if(!data.p1_name) {
+                 await set(rRef, { 
+                    state:"waiting", playerCount:1, p1_name:myName, 
+                    round:1, startPlayer:1, createdAt: Date.now(), mode: "classic" 
+                });
+                myRole = "p1";
+            } else {
+                const c = data.playerCount + 1;
+                if(c > 4) return alert("Room full!");
+                myRole = "p"+c;
+                await update(rRef, { [`p${c}_name`]:myName, playerCount:c });
+            }
         } else {
             myRole = "p1";
-            set(rRef, { 
+            await set(rRef, { 
                 state:"waiting", playerCount:1, p1_name:myName, 
                 round:1, startPlayer:1, createdAt: Date.now(), mode: "classic" 
             });
         }
         
-        // --- AUTO DELETE SETUP ON DISCONNECT ---
+        // --- AUTO DELETE ON DISCONNECT ---
         onDisconnect(ref(db, `rooms/${id}/${myRole}_name`)).remove();
-        // We can't easily auto-decrement count safely on pure disconnect without cloud functions,
-        // but removing the name allows us to check for "zombie" rooms later.
 
         selectedId = id; localStorage.setItem('sId', id); localStorage.setItem('mRl', myRole);
         enterRoom();
@@ -219,9 +257,9 @@
         onValue(ref(db, 'rooms/'+selectedId), (snap) => {
             gameData = snap.val();
             
-            // If room is deleted by others/host
-            if(!gameData) { 
-                alert("Room Closed / Ended");
+            // Validate: If room data is null OR my name is gone (kicked/error)
+            if(!gameData || !gameData[`${myRole}_name`]) { 
+                alert("Room Closed or You were removed.");
                 localStorage.removeItem('sId'); localStorage.removeItem('mRl'); 
                 location.reload(); 
                 return; 
@@ -251,7 +289,6 @@
         sb.style.gridTemplateColumns = `repeat(${gameData.playerCount}, 1fr)`;
         sb.innerHTML = "";
         for(let i=1; i<=gameData.playerCount; i++) {
-            // Only show score if player name exists
             if(gameData[`p${i}_name`]) {
                 const active = gameData.turn === `p${i}` && gameData.state !== "round_ended";
                 sb.innerHTML += `<div class="player-slot ${active?'active-turn':''}"><b>${gameData[`p${i}_name`]}</b><br>${gameData[`p${i}_score`]||0}</div>`;
@@ -406,41 +443,21 @@
         update(ref(db, 'rooms/'+selectedId), r);
     };
 
-    // --- UPDATED LEAVE FUNCTION WITH AUTO DELETE LOGIC ---
     window.leaveRoom = async () => {
         if(!selectedId || !myRole) return location.reload();
-        
         try {
-            // 1. Remove ONLY my name first
-            await update(ref(db, `rooms/${selectedId}`), { 
-                [`${myRole}_name`]: null 
-            });
-
-            // 2. Fetch fresh data to check who is left
+            await update(ref(db, `rooms/${selectedId}`), { [`${myRole}_name`]: null });
             const s = await get(ref(db, `rooms/${selectedId}`));
             if(s.exists()) {
                 const d = s.val();
-                
-                // 3. Count active players (check if names exist)
                 let activeCount = 0;
-                for(let i=1; i<=4; i++) {
-                    if(d[`p${i}_name`]) activeCount++;
-                }
-
-                // 4. If no players left, DELETE the room
-                if(activeCount === 0) {
-                    await remove(ref(db, `rooms/${selectedId}`));
-                } else {
-                    // Update player count for display
-                    await update(ref(db, `rooms/${selectedId}`), { playerCount: activeCount });
-                }
+                for(let i=1; i<=4; i++) if(d[`p${i}_name`]) activeCount++;
+                
+                if(activeCount === 0) await remove(ref(db, `rooms/${selectedId}`));
+                else await update(ref(db, `rooms/${selectedId}`), { playerCount: activeCount });
             }
-        } catch(e) {
-            console.error(e);
-        }
-
-        localStorage.removeItem('sId');
-        localStorage.removeItem('mRl');
+        } catch(e) { console.error(e); }
+        localStorage.removeItem('sId'); localStorage.removeItem('mRl');
         location.reload();
     };
 </script>
